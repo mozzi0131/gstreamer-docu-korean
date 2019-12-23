@@ -13,7 +13,7 @@ Tag들은 GStreamer의 태깅 시스템을 통해 관리됩니다. Stream-info�
 
 ## Metadata reading
 
-Stream information은 GstPad에서 얻으면 가장 쉽게 얻을 수 있습니다. 하지만 이 방법을 사용하려면 stream information을 얻고자 하는 모든 pad에 접근해야 합니다. 이 방법은 이미 [Using capabilities for metadata](https://gstreamer.freedesktop.org/documentation/application-development/basics/pads.html?gi-language=c#using-capabilities-for-metadata)에서 논의되었기 때문에, 여기에서는 생략하도록 하겠습니다.
+Stream information은 GstPad에서 얻으면 가장 쉽게 얻을 수 있습니다. 하지만 이 방법을 사용하려면 stream information을 얻고자 하는 모든 pad에 접근해야 합니다. 이 방법은 이미 [Using capabilities for metadata](../building-an-application/pads-and-capabilities.md)에서 논의되었기 때문에, 여기에서는 생략하도록 하겠습니다.
 
 Tag를 읽는 것은 GStreamer의 bus를 통해 수행됩니다. `GST_MESSAGE_TAG` 메세지를 통해 Tag를 알 수 있고, 원하는 대로 관리할 수 있습니다. 이것 또한 [Bus](https://gstreamer.freedesktop.org/documentation/application-development/basics/bus.html?gi-language=c) 에서 이전에 이야기되었었습니다.
 

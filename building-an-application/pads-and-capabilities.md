@@ -51,7 +51,7 @@ Lorem ipsum dolor sit amet, consectetur adipiscing elit, sed do eiusmod tempor i
 
 Pad는 하나 혹은 그 이상의 가용성을 가질 수 있습니다. Capability들은(`GstCaps`) 하나 이상의 `GstStructure` 배열의 형태로 표현되며, 각각의 `GstStructure`들은 field명의 문자열(ex. "width")과 type을 가진 value들(ex. `G_TYPE_INT` 혹은 `GST_TYPE_INT_RANGE`)를 포함한 field의 배열입니다.
 
-*possible*한 패드의 가용성과 *allowed*된 패드의 가용성, 그리고 *negotiated*된 패드의 가용성 사이에는 큰 차이가 있다는 것을 기억해 주세요. *Possible*한 패드의 가용성은 gst-inspect 상에서 볼 수 있는 pad 템플릿의 cap들이고, *Allowed*된 패드의 가용성은 패드의 구성요소인 cap들 혹은 해당 cap들의 부분집합들입니다. *Allowed*된 패드의 cap들은 peer pad의 possible cap에 대한 의존성이 존재합니다. 마지막으로 *Negotiated* cap은 stream/buffer의 정확한 형태를 나타내고, range나 list와 같은 변수 bit가 존재하지 않고 정확히 하나의 구조만 포함합니다.(ex. fixed caps) (?)
+*possible*한 패드의 가용성과 *allowed*된 패드의 가용성, 그리고 *negotiated*된 패드의 가용성 사이에는 큰 차이가 있다는 것을 기억해 주세요. *Possible*한 패드의 가용성은 gst-inspect 상에서 볼 수 있는 pad 템플릿의 cap들이고, *Allowed*된 패드의 가용성은 패드의 구성요소인 cap들 혹은 해당 cap들의 부분집합들입니다. *Allowed*된 패드의 cap들은 peer pad의 possible cap에 대한 의존성이 존재합니다. 마지막으로 *Negotiated* cap은 stream/buffer의 정확한 형태를 나타내고, range나 list와 같은 가변적인 변수 bit 없이 정확히 하나의 구조만 포함합니다.(ex. fixed caps) (?)
 
 capability들의 집합에서 요소들의 값을 구조체의 개별적인 요소에 querying 수행함으로써 얻어올 수 있습니다. `gst_caps_get_structure()`를 이용해서 cap의 구조체를 얻어올 수 있고, `gst_caps_get_size()`를 통해 `GstCaps`에서 가지고 있는 구조체의 개수를 얻어올 수 있습니다.
 

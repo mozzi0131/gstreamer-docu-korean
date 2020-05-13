@@ -1,6 +1,13 @@
 # Pipeline manipulation
 
-Lorem ipsum dolor sit amet, consectetur adipiscing elit, sed do eiusmod tempor incididunt ut labore et dolore magna aliqua.
+이번 챕터는 어플리케이션에서 pipeline을 조작하는 많은 방법들에 대해 다룹니다. 아래 토픽들이 크게 다룰 점들입니다.
+
+- 어떻게 어플리케이션에서 파이프라인으로 data를 넣는지
+- 어떻게 pipeline에서 data를 읽어들일지
+- 어떻게 pipeline의 속도, 길이, 시작점을 조작할지
+- 어떻게 pipeline의 data 처리를 *들을지*
+  
+이번 챕터의 일부분은 low-level단으로 다뤄지기 때문에, 해당 파트를 이해하려면 프로그래밍 경험과 GStreamer를 잘 이해하고 있어야 합니다.
 
 ## Table of Contents
 
@@ -19,11 +26,141 @@ Lorem ipsum dolor sit amet, consectetur adipiscing elit, sed do eiusmod tempor i
 
 ## Using probes
 
-Lorem ipsum dolor sit amet, consectetur adipiscing elit, sed do eiusmod tempor incididunt ut labore et dolore magna aliqua.
+Probing은 pad listener에 접근하기 위해서 제일 좋은 방법이라고 여겨집니다. 기술적으로, probe는 `gst_pad_add_probe()`를 이용해서 pad에 붙일 수 있는 callback 그 이상도 이하도 아닙니다. 해당 콜백을 제거하려면 `gst_pad_remove_probe()`를 이용하면 됩니다. 콜백을 붙이고 있는 동안은, probe는 당신에게 pad에서 발생하는 어떤 활동이건 알려줄 것입니다. 따라서 당신은 probe를 추가하면서 당신이 관심을 가지는 어떤 종류의 알림이건 정의해 사용할 수 있습니다.
+
+Probe의 종류들 :
+
+- Buffer가 push되거나 pull되는 경우. 사용자들은 probe를 등록할 때 `GST_PAD_PROBE_TYPE_BUFFER`를 확인하고 싶어할 것입니다. pad가 여러 가지 방식으로 계획될(?) 수 있기 때문인데, 필요한 경우 `GST_PAD_PROBE_TYPE_PUSH` 혹은 `GST_PAD_PROBE_TYPE_PULL` flag를 이용해서 필요한 scheduling mode만 특정할 수도 있습니다. Bufftr를 수정, drop, 확인을 위해 이 probe를 사용할 수도 있습니다. [Data probes](#data-probes)를 참고하세요.
+- buffer list는 push될 수 있습니다. probe를 등록할 때 `GST_PAD_PROBE_TYPE_BUFFER_LIST`를 이용하세요.
+- event는 pad를 통해 이동합니다. `GST_PAD_PROBE_TYPE_EVENT_DOWNSTREAM`이나 `GST_PAD_PROBE_TYPE_EVENT_UPSTREAM` flag를 통해 event의 방향을 선택하세요. 또한 양방향에 대한 이벤트를 알림받기 위해 `GST_PAD_PROBE_TYPE_EVENT_BOTH`도 지원됩니다. 기본적으로는 flush event는 알림을 발생시키지 않습니다. 따라서 flush event에서의 callback을 받기 위해서는 `GST_PAD_PROBE_TYPE_EVENT_FLUSH`를 통해 직접 알림을 켜 줘야 합니다. 이벤트들은 언제나 push mode에서만 알림이 옵니다. 이 타입의 probe를 이벤트를 확인, 수정, drop하기 위해 사용할 수 있습니다.
+- query는 pad를 통해 이동합니다. `GST_PAD_PROBE_TYPE_QUREY_DOWNSTREAM`과 `GST_PAD_PROBE_TYPE_QUERY_UPSTREAM` flag를 이용해 downstream/upstream query를 선택할 수 있습니다. 양방향을 모두 선택하기 위해서  `GST_PAD_PROBE_TYPE_QUERY_BOTH`를 사용할 수 있습니다. Query probe는 두 번 알림을 받는데요, query가 upstream 혹은 downstream으로 전송되었을 때와 query의 결과값이 돌아왔을 때입니다. 사용자는 `GST_PAD_PROBE_TYPE_PUSH`나 `GST_PAD_PROBE_TYPE_PULL`를 가지고 어떤 단계에서 callback이 호출될지 결정할 수 있습니다; 각각 query가 수행될 때 혹은 query의 결과가 돌아왔을 때에요.
+- dataflow에 대해 알림을 주는 것 뿐만 아니라, 사용자는 probe에게 callback이 돌아올 때 dataflow를 block 처리해달라고 요청할 수 있습니다. 이 요청을 blocking probe라고 부르는데, `GST_PAD_PROBE_TYPE_BLOCK` flag를 이용해서 활성화시킬 수 있으며, 선택된 활동에 대해서만 dataflow를 block하기 위해 다른 flag와 함께 사용할 수 있습니다. pad는 해당 probe가 삭제되거나, `GST_PAD_PROBE_REMOVE`를 해당 callback으로 return했을 때 unblock처리됩니다. `GST_PAD_PROBE_PASS`를 이용해서 현재 block 되어있는 아이템만 통과시킬수만 있으며, 해당 pad는 다음 아이템에 대해서는 다시 block됩니다.
+probe를 blocking하는 건 잠시 동안 pad를 block하는 용도로 주로 쓰이는데, 해당 pad가 unlink되었거나 사용자가 해당 pad를 unlink시킬 예정이기 때문입니다. 만약 dataflow가 block되지 않는다면, data가 unlinked된 pad에 들어가게 되기 때문에 pipeline이 error 상태가 되게 됩니다. 어떻게 부분적으로 pipeline을 preroll시키기 위해 blocking probe를 사용하는지 확인하겠습니다. [Play a section of a media file](#play-a-section-of-a-media-file)을 확인하세요.
+- pad에서 아무런 일도 일어나지 않을 때 알림을 받는 용도로도 사용합니다. `GST_PAD_PROBE_TYPE_IDLE` flag를 이용해 이 probe를 사용할 수 있습니다. 사용자는 `GST_PAD_PROBE_TYPE_PUSH`와 함께/혹은 `GST_PAD_PROBE_TYPE_PULL`을 이용해 pad scheduling mode에 따라 알림을 받을 수 있습니다. IDLE probe는 해당 probe가 설치되어 있는 한 어떤 data도 pad를 지나가지 못하게 한다는 점에서 blocking probe라고 할 수 있습니다.
+사용자는 또한 "이상적인" probe를 pad를 동적으로 재연결할 때에 사용할 수 있게 합니다. 어떻게 idleb probe를 pipeline의 element를 대체하는 용도로 쓰이게 되는지 확인하도록 하겠습니다. [Dynamically changing the pipeline](#dynamically-changing-the-pipeline)을 확인하세요.
 
 ### Data probes
 
-Lorem ipsum dolor sit amet, consectetur adipiscing elit, sed do eiusmod tempor incididunt ut labore et dolore magna aliqua.
+Data probe는 data가 pad를 통해 흐를 때 사용자에게 알림을 줍니다. 해당 종류의 probe를 생성하려면 `GST_PAD_PROBE_TYPE_BUFFER` 및/또는 `GST_PAD_PROBE_TYPE_BUFFER_LIST`를 `gst_pad_add_probe()`를 통해 보내십시오. `_chain()` 함수에서 수행할 수 있는 element들이 할 수 있는 가장 흔한 buffer 동작은 probe callback들 안에서 처리될 수 있습니다.
+
+Data probe들은 pipeline의 streaming thread context에서 흐르게 되는데, 따라서 콜백들은 blocking과 이상한(weird한) 행동을 수행하는 것을 피하려고 노력해야 합니다. 해당 동작들은 pipeline의 동작성에 부정적인 영향을 줄 수 있으며, bug의 상황에서는, deadlock이나 crash를 유발할 수 있습니다. 더 상세하게 다루자면, 일반적으로 probe callback 안에서는 GUI와 연관된 함수를 호출하지 말아야 하며, pipeline의 상태를 변경하려고 하면 안 됩니다. 어플리케이션은 pipeline의 bus를 통해 custom message를 발행해서 main application의 쓰레드와 소통하거나, pipeline을 멈추는 등의 행동을 해야 합니다.
+
+아래의 예시는 data probe를 사용하는 법에 대해 보여줍니다. 뭘 봐야 할지 모르겠다면, 이 프로그램의 결과를 `gst-launch-1.0 videotestsrc ! xvimagesink`와 비교해 보세요.
+
+```c
+#include <gst/gst.h>
+
+static GstPadProbeReturn
+cb_have_data (GstPad          *pad,
+              GstPadProbeInfo *info,
+              gpointer         user_data)
+{
+  gint x, y;
+  GstMapInfo map;
+  guint16 *ptr, t;
+  GstBuffer *buffer;
+
+  buffer = GST_PAD_PROBE_INFO_BUFFER (info);
+
+  buffer = gst_buffer_make_writable (buffer);
+
+  /* Making a buffer writable can fail (for example if it
+   * cannot be copied and is used more than once)
+   */
+  if (buffer == NULL)
+    return GST_PAD_PROBE_OK;
+
+  /* Mapping a buffer can fail (non-writable) */
+  if (gst_buffer_map (buffer, &map, GST_MAP_WRITE)) {
+    ptr = (guint16 *) map.data;
+    /* invert data */
+    for (y = 0; y < 288; y++) {
+      for (x = 0; x < 384 / 2; x++) {
+        t = ptr[384 - 1 - x];
+        ptr[384 - 1 - x] = ptr[x];
+        ptr[x] = t;
+      }
+      ptr += 384;
+    }
+    gst_buffer_unmap (buffer, &map);
+  }
+
+  GST_PAD_PROBE_INFO_DATA (info) = buffer;
+
+  return GST_PAD_PROBE_OK;
+}
+
+gint
+main (gint   argc,
+      gchar *argv[])
+{
+  GMainLoop *loop;
+  GstElement *pipeline, *src, *sink, *filter, *csp;
+  GstCaps *filtercaps;
+  GstPad *pad;
+
+  /* init GStreamer */
+  gst_init (&argc, &argv);
+  loop = g_main_loop_new (NULL, FALSE);
+
+  /* build */
+  pipeline = gst_pipeline_new ("my-pipeline");
+  src = gst_element_factory_make ("videotestsrc", "src");
+  if (src == NULL)
+    g_error ("Could not create 'videotestsrc' element");
+
+  filter = gst_element_factory_make ("capsfilter", "filter");
+  g_assert (filter != NULL); /* should always exist */
+
+  csp = gst_element_factory_make ("videoconvert", "csp");
+  if (csp == NULL)
+    g_error ("Could not create 'videoconvert' element");
+
+  sink = gst_element_factory_make ("xvimagesink", "sink");
+  if (sink == NULL) {
+    sink = gst_element_factory_make ("ximagesink", "sink");
+    if (sink == NULL)
+      g_error ("Could not create neither 'xvimagesink' nor 'ximagesink' element");
+  }
+
+  gst_bin_add_many (GST_BIN (pipeline), src, filter, csp, sink, NULL);
+  gst_element_link_many (src, filter, csp, sink, NULL);
+  filtercaps = gst_caps_new_simple ("video/x-raw",
+               "format", G_TYPE_STRING, "RGB16",
+               "width", G_TYPE_INT, 384,
+               "height", G_TYPE_INT, 288,
+               "framerate", GST_TYPE_FRACTION, 25, 1,
+               NULL);
+  g_object_set (G_OBJECT (filter), "caps", filtercaps, NULL);
+  gst_caps_unref (filtercaps);
+
+  pad = gst_element_get_static_pad (src, "src");
+  gst_pad_add_probe (pad, GST_PAD_PROBE_TYPE_BUFFER,
+      (GstPadProbeCallback) cb_have_data, NULL, NULL);
+  gst_object_unref (pad);
+
+  /* run */
+  gst_element_set_state (pipeline, GST_STATE_PLAYING);
+
+  /* wait until it's up and running or failed */
+  if (gst_element_get_state (pipeline, NULL, NULL, -1) == GST_STATE_CHANGE_FAILURE) {
+    g_error ("Failed to go into PLAYING state");
+  }
+
+  g_print ("Running ...\n");
+  g_main_loop_run (loop);
+
+  /* exit */
+  gst_element_set_state (pipeline, GST_STATE_NULL);
+  gst_object_unref (pipeline);
+
+  return 0;
+}
+```
+
+확실하게 말하자면, pad probe callback은 buffer가 변경을 허용할 때만(writable할 때만)수정할 수 있습니다. 해당 buffer가 writable한지 아닌지는 pipeline과 속한 element와 연관되어 있습니다. 일반적으로 buffer는 writable하지만 가끔 아니기도 합니다. 그리고 아닌 경우에는 data나 metadata의 예상치 못한 수정은 디버깅하고 추적하기 매우 어려운 버그를 만들어낼 수 있습니다. 해당 buffer가 writable한지는 `gst_buffer_is_writable`을 통해 알 수 있습니다. 전달된 buffer와는 다른 buffer를 다시 전달할 수 있으므로, `gst_buffer_make_writable`을 callback 함수에서 사용해서 해당 buffer가 writable한지 확인하는 것이 좋은 아이디어일 것입니다.
+Pad probe들은 파이프라인을 통과하는 데이터를 확인하는 데에 최적화되어있습니다. 만약 데이터 수정을 필요로 한다면, GStreamer element를 직접 작성하는 것이 더 나을 것입니다. `GstAudioFilter`, `GstVideoFilter` 혹은 `GstBaseTransform`과 같은 base class들은 이런 작업들을 더 쉽게 만들어 줍니다.
+만약 사용자가 하고 싶은 것이 pipeline을 흐르는 buffer를 확인하는 것이라면, pad probe들을 세팅할 필요조차 없습니다. 사용자는 identity element를 pipeline에 단순히 삽입시켜 그것을 "handoff" signal에 연결시킬 수 있습니다. identity element는 또한 `dump`, `last-message`와 같은 유용한 디버깅 툴을 제공합니다. 후자(`last-message`)의 경우에는 '-v' swtich를 `gst-launch`로 전달하고, identity의 `silent` 요소를 `FALSE`로 설정하면 활성화됩니다.
 
 ### Play a section of a media file
 
@@ -89,8 +226,8 @@ element1 |      | element2 |      | element3
 1. element1의 source pad를 'blocking pad probe'를 통해 Block 처리합니다. pad가 block되면, probe callback이 호출될 것입니다.
 2. Block callback 내부에서는 element1과 element2 사이에 아무것도 흐르지 않게 되며, block이 풀리기 전까지는 해당 상태가 유지될 것입니다.
 3. element1과 element2를 unlink처리하세요.
-4. element2의 datark flush되도록 하세요. 몇몇 element들은 내부적으로 data를 남겨둘 수 있기 때문에, element2 밖으로 데이터를 강제로 내보내서 데이터 손실이 일어나지 않도록 해야 합니다. 아래와 같이 `EOS` event를 element2로 보내서 해당 job을 수행할 수 있습니다.
-  - element2의 source pad로 event prob를 집어넣습니다.
+4. element2의 data가 flush되도록 하세요. 몇몇 element들은 내부적으로 data를 남겨둘 수 있기 때문에, element2 밖으로 데이터를 강제로 내보내서 데이터 손실이 일어나지 않도록 해야 합니다. 아래와 같이 `EOS` event를 element2로 보내서 해당 job을 수행할 수 있습니다.
+  - element2의 source pad로 event probe를 집어넣습니다.
   - `EOS`를 element2의 sink pad로 보냅니다. 이 과정을 통해 element2의 내부에 있는 데이터를 강제로 내보낼 수 있습니다.
   - `EOS` event가 element2의 source pad에서 나타날 때까지 기다립니다. `EOS` 이벤트가 수신된다면, 해당 이벤트를 drop하고 event probe를 지웁니다.
 5. element2와 element3을 unlink 처리합니다. 이제 파이프라인에서 element2를 삭제할 수 있으며, 해당 상태를 NULL로 변경할 수 있습니다.
@@ -313,4 +450,4 @@ main (int argc, char **argv)
 }
 ```
 
-우리가 해당 효과의 전과 후 모두에 videoconvert element를 추가한다는 사실을 확인해 주세요. 이 조치는 몇몇 element들이 다른 colorspaces에서 동작할 수 있기 때문에 필요하며, conversion element를 추가함에 따라 적합한 format이 적용될 수 있음을 확신할 수 있습니다.
+우리가 해당 효과의 전과 후에 어떻게 videoconvert element를 추가했는지를 주목해 주세요. 이 조치는 몇몇 element들이 다른 colorspaces에서 동작할 수 있기 때문에 필요합니다. Conversion element를 추가함에 따라 적합한 format이 적용될 수 있음을 확신할 수 있습니다.
